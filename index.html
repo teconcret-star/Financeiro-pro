@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financeiro Pro - Versão Final</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f3f4f6; font-family: sans-serif; }
+        .card { background: white; padding: 1.2rem; border-radius: 1rem; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: all 0.3s; }
+        .calendar-day { min-height: 45px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.75rem; border-radius: 0.5rem; border: 1px solid #e5e7eb; cursor: pointer; transition: 0.2s; }
+        .calendar-day:hover { background-color: #fef08a; transform: scale(1.05); }
+        .has-receita { background-color: #dcfce7 !important; border-color: #22c55e !important; color: #166534; font-weight: bold; }
+        .has-despesa { background-color: #fee2e2 !important; border-color: #ef4444 !important; color: #991b1b; font-weight: bold; }
+        .has-ambos { background-image: linear-gradient(135deg, #dcfce7 50%, #fee2e2 50%) !important; font-weight: bold; }
+        .today { border: 2px solid #2563eb !important; text-decoration: underline; }
+        #tabela-dados th { background-color: #1f2937; color: white; padding: 0.5rem 0.75rem; text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        #tabela-dados td { padding: 0.5rem 0.75rem; font-size: 0.75rem; border-bottom: 1px solid #f3f4f6; }
+        #tabela-dados tr:hover td { background-color: #f9fafb; }
+    </style>
+</head>
+<body class="p-4 pb-24">
+
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-xl font-bold text-gray-800">Minhas Contas 🏠</h1>
+        <div class="flex gap-2">
+            <label class="bg-gray-700 text-white text-[10px] font-bold px-3 py-2 rounded-lg shadow-md cursor-pointer hover:bg-gray-800 active:scale-95">
+                📥 IMPORTAR <input type="file" id="importFile" class="hidden" accept=".csv" onchange="importarExcel(event)">
+            </label>
+            <button onclick="exportarExcel()" class="bg-blue-600 text-white text-[10px] font-bold px-3 py-2 rounded-lg shadow-md hover:bg-blue-700 active:scale-95">
+                📊 EXPORTAR
+            </button>
+        </div>
+    </div>
+
+    <div class="card mb-6">
+        <div class="flex justify-between items-center mb-4">
+            <h3 id="mes-ano" class="font-bold text-gray-700 capitalize text-sm"></h3>
+            <span class="text-[9px] text-gray-400">Clique em um dia para lançar</span>
+        </div>
+        <div class="grid grid-cols-7 gap-1 text-center text-[9px] font-bold text-gray-400 mb-2">
+            <span>DOM</span><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span>
+        </div>
+        <div id="calendar-grid" class="grid grid-cols-7 gap-1"></div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 mb-4 text-center">
+        <div class="card bg-green-50 border-b-4 border-green-500">
+            <p class="text-[10px] text-green-600 font-bold uppercase">Entradas</p>
+            <p id="total-receitas" class="text-lg font-bold text-green-700">R$ 0,00</p>
+        </div>
+        <div class="card bg-red-50 border-b-4 border-red-500">
+            <p class="text-[10px] text-red-600 font-bold uppercase">Saídas</p>
+            <p id="total-despesas" class="text-lg font-bold text-red-700">R$ 0,00</p>
+        </div>
+    </div>
+
+    <div id="form-container" class="card mb-6 border-t-4 border-gray-800">
+        <input type="hidden" id="edit-id">
+        <input type="text" id="desc" placeholder="Descrição" class="w-full border p-3 rounded-lg mb-2 outline-none focus:ring-2 focus:ring-blue-500">
+        <input type="number" id="valor" placeholder="Valor R$" class="w-full border p-3 rounded-lg mb-2 outline-none">
+        
+        <div class="grid grid-cols-2 gap-2 mb-4">
+            <div>
+                <label class="text-[10px] font-bold text-gray-400 uppercase ml-1">Vencimento</label>
+                <input type="date" id="dataVenc" class="w-full border p-2 rounded-lg outline-none text-sm bg-gray-50 transition-all">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold text-gray-400 uppercase ml-1">Status</label>
+                <select id="status" class="w-full border p-2 rounded-lg outline-none text-sm bg-gray-50">
+                    <option value="pago">Pago</option>
+                    <option value="pendente">Pendente</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="flex gap-2 text-sm font-bold">
+            <button onclick="salvar('receita')" id="btn-receita" class="flex-1 bg-green-600 text-white py-3 rounded-xl uppercase hover:bg-green-700"> + Receita</button>
+            <button onclick="salvar('despesa')" id="btn-despesa" class="flex-1 bg-red-600 text-white py-3 rounded-xl uppercase hover:bg-red-700">- Despesa</button>
+            <button onclick="cancelarEdicao()" id="btn-cancelar" class="hidden flex-1 bg-gray-400 text-white py-3 rounded-xl uppercase">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Tabela de dados do localStorage -->
+    <div class="card mb-6">
+        <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+            <h2 class="font-bold text-gray-700 text-sm">📋 Dados Salvos</h2>
+            <div class="flex flex-wrap gap-2 items-center">
+                <select id="filtro-mes" onchange="renderTabela()" class="border p-1.5 rounded-lg outline-none text-xs bg-gray-50">
+                    <option value="">Todos os meses</option>
+                </select>
+                <select id="filtro-tipo" onchange="renderTabela()" class="border p-1.5 rounded-lg outline-none text-xs bg-gray-50">
+                    <option value="">Todos os tipos</option>
+                    <option value="receita">Receitas</option>
+                    <option value="despesa">Despesas</option>
+                </select>
+                <button onclick="clonarMesAnterior()" class="bg-purple-600 text-white text-[10px] font-bold px-3 py-2 rounded-lg shadow-md hover:bg-purple-700 active:scale-95">
+                    🔄 CLONAR MÊS ANTERIOR
+                </button>
+            </div>
+        </div>
+        <div class="overflow-x-auto rounded-lg">
+            <table id="tabela-dados" class="w-full border-collapse text-left">
+                <thead>
+                    <tr>
+                        <th>Descrição</th>
+                        <th>Valor</th>
+                        <th>Tipo</th>
+                        <th>Vencimento</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela-body">
+                    <tr>
+                        <td colspan="6" class="text-center text-gray-400 py-6">Nenhum registro encontrado.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p id="tabela-contador" class="text-[10px] text-gray-400 mt-2 text-right"></p>
+    </div>
+
+    <script>
+        let transacoes = JSON.parse(localStorage.getItem('finance_app_v4')) || [];
+
+        function salvar(tipo) {
+            const idEdit = document.getElementById('edit-id').value;
+            const desc = document.getElementById('desc').value;
+            const valor = parseFloat(document.getElementById('valor').value);
+            const dataVenc = document.getElementById('dataVenc').value;
+            const status = document.getElementById('status').value;
+
+            if (!desc || isNaN(valor) || !dataVenc) return alert("Preencha todos os campos!");
+
+            if (idEdit) {
+                const index = transacoes.findIndex(t => t.id == idEdit);
+                transacoes[index] = { ...transacoes[index], desc, valor, dataVenc, status };
+            } else {
+                transacoes.push({ id: Date.now(), desc, valor, tipo, dataVenc, status });
+            }
+            cancelarEdicao();
+            atualizarApp();
+        }
+
+        function editar(id) {
+            const item = transacoes.find(t => t.id === id);
+            document.getElementById('edit-id').value = item.id;
+            document.getElementById('desc').value = item.desc;
+            document.getElementById('valor').value = item.valor;
+            document.getElementById('dataVenc').value = item.dataVenc;
+            document.getElementById('status').value = item.status;
+            
+            document.getElementById('form-container').classList.add('ring-2', 'ring-blue-500');
+            document.getElementById('btn-receita').innerText = "CONCLUIR";
+            document.getElementById('btn-despesa').classList.add('hidden');
+            document.getElementById('btn-cancelar').classList.remove('hidden');
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+
+        function cancelarEdicao() {
+            document.getElementById('edit-id').value = '';
+            document.getElementById('desc').value = '';
+            document.getElementById('valor').value = '';
+            document.getElementById('dataVenc').value = '';
+            document.getElementById('btn-receita').innerText = "+ Receita";
+            document.getElementById('btn-despesa').classList.remove('hidden');
+            document.getElementById('btn-cancelar').classList.add('hidden');
+            document.getElementById('form-container').classList.remove('ring-2', 'ring-blue-500');
+        }
+
+        function remover(id) {
+            if(confirm("Deseja realmente excluir este registro?")) {
+                transacoes = transacoes.filter(t => t.id !== id);
+                atualizarApp();
+            }
+        }
+
+        function focarData(data) {
+            const input = document.getElementById('dataVenc');
+            input.value = data;
+            window.scrollTo({top: document.getElementById('form-container').offsetTop - 20, behavior: 'smooth'});
+            input.classList.add('ring-4', 'ring-blue-300');
+            setTimeout(() => input.classList.remove('ring-4', 'ring-blue-300'), 1500);
+        }
+
+        function gerarCalendario() {
+            const grid = document.getElementById('calendar-grid');
+            const titulo = document.getElementById('mes-ano');
+            grid.innerHTML = '';
+            const hoje = new Date();
+            const mes = hoje.getMonth();
+            const ano = hoje.getFullYear();
+            titulo.innerText = hoje.toLocaleString('pt-br', { month: 'long', year: 'numeric' });
+            
+            const primeiroDia = new Date(ano, mes, 1).getDay();
+            const totalDias = new Date(ano, mes + 1, 0).getDate();
+
+            for (let i = 0; i < primeiroDia; i++) grid.innerHTML += `<div></div>`;
+
+            for (let dia = 1; dia <= totalDias; dia++) {
+                const dataString = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+                const movs = transacoes.filter(t => t.dataVenc === dataString);
+                
+                let classeCor = "";
+                const temRec = movs.some(t => t.tipo === 'receita');
+                const temDes = movs.some(t => t.tipo === 'despesa');
+                
+                if (temRec && temDes) classeCor = "has-ambos";
+                else if (temRec) classeCor = "has-receita";
+                else if (temDes) classeCor = "has-despesa";
+
+                grid.innerHTML += `
+                    <div class="calendar-day ${classeCor} ${dia === hoje.getDate() ? 'today' : ''}" onclick="focarData('${dataString}')">
+                        ${dia}
+                    </div>`;
+            }
+        }
+
+        function importarExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const linhas = e.target.result.split(/\r?\n/).slice(1);
+                    let novos = [];
+                    linhas.forEach(l => {
+                        const c = l.split(';');
+                        if (c.length >= 5) {
+                            novos.push({ id: Date.now() + Math.random(), desc: c[0].replace(/"/g, ''), valor: parseFloat(c[1].replace(',', '.')), tipo: c[2].trim(), dataVenc: c[3].trim(), status: c[4].trim() });
+                        }
+                    });
+                    if (novos.length > 0) {
+                        transacoes = [...transacoes, ...novos];
+                        atualizarApp();
+                        alert("Importado com sucesso!");
+                    }
+                } catch (err) { alert("Erro ao importar."); }
+            };
+            reader.readAsText(file);
+        }
+
+        function exportarExcel() {
+            if (transacoes.length === 0) return alert("Sem dados.");
+            let csv = "\uFEFFDescricao;Valor;Tipo;Vencimento;Status\n";
+            transacoes.forEach(t => csv += `${t.desc};${t.valor.toFixed(2).replace('.', ',')};${t.tipo};${t.dataVenc};${t.status}\n`);
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+            link.download = "financeiro.csv";
+            link.click();
+        }
+
+        function popularFiltroMes() {
+            const sel = document.getElementById('filtro-mes');
+            const valorAtual = sel.value;
+            const meses = [...new Set(transacoes.map(t => t.dataVenc.substring(0, 7)))].sort().reverse();
+            sel.innerHTML = '<option value="">Todos os meses</option>';
+            meses.forEach(m => {
+                const [ano, mes] = m.split('-');
+                const label = new Date(ano, mes - 1, 1).toLocaleString('pt-br', { month: 'long', year: 'numeric' });
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+                if (m === valorAtual) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        function renderTabela() {
+            const filtroMes = document.getElementById('filtro-mes').value;
+            const filtroTipo = document.getElementById('filtro-tipo').value;
+            const tbody = document.getElementById('tabela-body');
+            const contador = document.getElementById('tabela-contador');
+
+            let dados = [...transacoes].sort((a, b) => new Date(b.dataVenc) - new Date(a.dataVenc));
+
+            if (filtroMes) dados = dados.filter(t => t.dataVenc.startsWith(filtroMes));
+            if (filtroTipo) dados = dados.filter(t => t.tipo === filtroTipo);
+
+            if (dados.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-gray-400 py-6">Nenhum registro encontrado.</td></tr>`;
+                contador.textContent = '';
+                return;
+            }
+
+            tbody.innerHTML = dados.map(t => `
+                <tr>
+                    <td class="font-semibold text-gray-800 uppercase">${t.desc}</td>
+                    <td class="font-bold ${t.tipo === 'receita' ? 'text-green-600' : 'text-red-600'}">
+                        ${t.tipo === 'receita' ? '+' : '-'} R$ ${t.valor.toFixed(2).replace('.', ',')}
+                    </td>
+                    <td>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${t.tipo === 'receita' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+                            ${t.tipo === 'receita' ? 'Receita' : 'Despesa'}
+                        </span>
+                    </td>
+                    <td class="text-gray-500">${t.dataVenc.split('-').reverse().join('/')}</td>
+                    <td>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${t.status === 'pago' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}">
+                            ${t.status.toUpperCase()}
+                        </span>
+                    </td>
+                    <td class="flex gap-3 py-2">
+                        <button onclick="editar(${t.id})" class="text-blue-600 text-[10px] font-bold hover:underline">EDITAR</button>
+                        <button onclick="remover(${t.id})" class="text-red-400 text-[10px] hover:underline">EXCLUIR</button>
+                    </td>
+                </tr>
+            `).join('');
+
+            const total = dados.length;
+            const totalR = dados.filter(t => t.tipo === 'receita').reduce((s, t) => s + t.valor, 0);
+            const totalD = dados.filter(t => t.tipo === 'despesa').reduce((s, t) => s + t.valor, 0);
+            contador.textContent = `${total} registro(s) | Entradas: R$ ${totalR.toFixed(2).replace('.', ',')} | Saídas: R$ ${totalD.toFixed(2).replace('.', ',')}`;
+        }
+
+        function clonarMesAnterior() {
+            const hoje = new Date();
+            const anoAtual = hoje.getFullYear();
+            const mesAtual = hoje.getMonth(); // 0-indexed
+
+            // Mês anterior
+            const dataAnterior = new Date(anoAtual, mesAtual - 1, 1);
+            const anoAnterior = dataAnterior.getFullYear();
+            const mesAnteriorNum = dataAnterior.getMonth(); // 0-indexed
+            const mesAnteriorStr = String(mesAnteriorNum + 1).padStart(2, '0');
+            const prefixoAnterior = `${anoAnterior}-${mesAnteriorStr}`;
+
+            // Próximo mês (destino da clonagem)
+            const dataProximo = new Date(anoAtual, mesAtual + 1, 1);
+            const anoProximo = dataProximo.getFullYear();
+            const mesProximoNum = dataProximo.getMonth(); // 0-indexed
+            const mesProximoStr = String(mesProximoNum + 1).padStart(2, '0');
+            const totalDiasProximo = new Date(anoProximo, mesProximoNum + 1, 0).getDate();
+
+            const origem = transacoes.filter(t => t.dataVenc.startsWith(prefixoAnterior));
+
+            if (origem.length === 0) {
+                const label = dataAnterior.toLocaleString('pt-br', { month: 'long', year: 'numeric' });
+                return alert(`Nenhuma conta encontrada em ${label} para clonar.`);
+            }
+
+            const labelAnterior = dataAnterior.toLocaleString('pt-br', { month: 'long', year: 'numeric' });
+            const labelProximo = dataProximo.toLocaleString('pt-br', { month: 'long', year: 'numeric' });
+
+            if (!confirm(`Deseja clonar ${origem.length} conta(s) de ${labelAnterior} para ${labelProximo}?\n\nOs registros clonados terão status "Pendente".`)) return;
+
+            const clones = origem.map(t => {
+                const diaOrigem = parseInt(t.dataVenc.split('-')[2], 10);
+                // Garante que o dia não ultrapasse o total de dias do mês destino
+                const diaDestino = Math.min(diaOrigem, totalDiasProximo);
+                return {
+                    id: Date.now() + Math.random(),
+                    desc: t.desc,
+                    valor: t.valor,
+                    tipo: t.tipo,
+                    dataVenc: `${anoProximo}-${mesProximoStr}-${String(diaDestino).padStart(2, '0')}`,
+                    status: 'pendente'
+                };
+            });
+
+            transacoes = [...transacoes, ...clones];
+            atualizarApp();
+            alert(`✅ ${clones.length} conta(s) clonada(s) para ${labelProximo} com sucesso!`);
+        }
+
+        function atualizarApp() {
+            localStorage.setItem('finance_app_v4', JSON.stringify(transacoes));
+            let r = 0, d = 0;
+            transacoes.forEach(t => { if (t.tipo === 'receita') r += t.valor; else d += t.valor; });
+            document.getElementById('total-receitas').innerText = `R$ ${r.toFixed(2).replace('.', ',')}`;
+            document.getElementById('total-despesas').innerText = `R$ ${d.toFixed(2).replace('.', ',')}`;
+            gerarCalendario();
+            popularFiltroMes();
+            renderTabela();
+        }
+
+        window.onload = () => {
+            atualizarApp();
+            const hoje = new Date().toISOString().split('T')[0];
+            const p = transacoes.filter(t => t.status === 'pendente' && t.tipo === 'despesa' && t.dataVenc >= hoje).sort((a,b)=>new Date(a.dataVenc)-new Date(b.dataVenc))[0];
+            if (p) alert(`🔔 CONTA PRÓXIMA: "${p.desc.toUpperCase()}" vence em ${p.dataVenc.split('-').reverse().join('/')}`);
+        };
+    </script>
+</body>
+</html>
