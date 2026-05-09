@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financeiro Pro - Versão Final</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js"></script>
     <style>
         body { background-color: #f3f4f6; font-family: sans-serif; }
         .card { background: white; padding: 1.2rem; border-radius: 1rem; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: all 0.3s; }
@@ -24,19 +25,23 @@
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-xl font-bold text-gray-800">Minhas Contas 🏠</h1>
         <div class="flex gap-2">
-            <label class="bg-gray-700 text-white text-[10px] font-bold px-3 py-2 rounded-lg shadow-md cursor-pointer hover:bg-gray-800 active:scale-95">
-                📥 IMPORTAR <input type="file" id="importFile" class="hidden" accept=".csv" onchange="importarExcel(event)">
+            <label class="bg-gray-700 text-white text-[10px] font-bold px-3 py-2 rounded-lg shadow-md cursor-pointer hover:bg-gray-800 active:scale-95" title="Importar planilha Excel (.xlsx) ou CSV (.csv)">
+                📥 IMPORTAR EXCEL <input type="file" id="importFile" class="hidden" accept=".csv,.xlsx,.xls" onchange="importarExcel(event)">
             </label>
-            <button onclick="exportarExcel()" class="bg-blue-600 text-white text-[10px] font-bold px-3 py-2 rounded-lg shadow-md hover:bg-blue-700 active:scale-95">
-                📊 EXPORTAR
+            <button onclick="exportarExcel()" class="bg-blue-600 text-white text-[10px] font-bold px-3 py-2 rounded-lg shadow-md hover:bg-blue-700 active:scale-95" title="Exportar todos os dados como planilha Excel (.xlsx)">
+                📊 EXPORTAR EXCEL
             </button>
         </div>
     </div>
 
     <div class="card mb-6">
         <div class="flex justify-between items-center mb-4">
-            <h3 id="mes-ano" class="font-bold text-gray-700 capitalize text-sm"></h3>
-            <span class="text-[9px] text-gray-400">Clique em um dia para lançar</span>
+            <button onclick="navegarMes(-1)" class="text-gray-500 hover:text-gray-800 font-bold text-xl px-2 leading-none" title="Mês anterior">‹</button>
+            <div class="text-center">
+                <h3 id="mes-ano" class="font-bold text-gray-700 capitalize text-sm"></h3>
+                <span class="text-[9px] text-gray-400">Clique em um dia para lançar</span>
+            </div>
+            <button onclick="navegarMes(1)" class="text-gray-500 hover:text-gray-800 font-bold text-xl px-2 leading-none" title="Próximo mês">›</button>
         </div>
         <div class="grid grid-cols-7 gap-1 text-center text-[9px] font-bold text-gray-400 mb-2">
             <span>DOM</span><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span>
@@ -46,11 +51,11 @@
 
     <div class="grid grid-cols-2 gap-3 mb-4 text-center">
         <div class="card bg-green-50 border-b-4 border-green-500">
-            <p class="text-[10px] text-green-600 font-bold uppercase">Entradas</p>
+            <p class="text-[10px] text-green-600 font-bold uppercase">Entradas do Mês</p>
             <p id="total-receitas" class="text-lg font-bold text-green-700">R$ 0,00</p>
         </div>
         <div class="card bg-red-50 border-b-4 border-red-500">
-            <p class="text-[10px] text-red-600 font-bold uppercase">Saídas</p>
+            <p class="text-[10px] text-red-600 font-bold uppercase">Saídas do Mês</p>
             <p id="total-despesas" class="text-lg font-bold text-red-700">R$ 0,00</p>
         </div>
     </div>
@@ -124,6 +129,27 @@
     <script>
         let transacoes = JSON.parse(localStorage.getItem('finance_app_v4')) || [];
 
+        const dataAtual = new Date();
+        let viewMes = dataAtual.getMonth();   // 0-indexed
+        let viewAno = dataAtual.getFullYear();
+
+        function navegarMes(dir) {
+            viewMes += dir;
+            if (viewMes < 0) { viewMes = 11; viewAno--; }
+            if (viewMes > 11) { viewMes = 0; viewAno++; }
+            gerarCalendario();
+            atualizarResumo();
+            // Sync table filter with the viewed month
+            const prefixo = `${viewAno}-${String(viewMes + 1).padStart(2, '0')}`;
+            const sel = document.getElementById('filtro-mes');
+            if ([...sel.options].some(o => o.value === prefixo)) {
+                sel.value = prefixo;
+            } else {
+                sel.value = '';
+            }
+            renderTabela();
+        }
+
         function salvar(tipo) {
             const idEdit = document.getElementById('edit-id').value;
             const desc = document.getElementById('desc').value;
@@ -189,9 +215,9 @@
             const titulo = document.getElementById('mes-ano');
             grid.innerHTML = '';
             const hoje = new Date();
-            const mes = hoje.getMonth();
-            const ano = hoje.getFullYear();
-            titulo.innerText = hoje.toLocaleString('pt-br', { month: 'long', year: 'numeric' });
+            const mes = viewMes;
+            const ano = viewAno;
+            titulo.innerText = new Date(ano, mes, 1).toLocaleString('pt-br', { month: 'long', year: 'numeric' });
             
             const primeiroDia = new Date(ano, mes, 1).getDay();
             const totalDias = new Date(ano, mes + 1, 0).getDate();
@@ -210,8 +236,10 @@
                 else if (temRec) classeCor = "has-receita";
                 else if (temDes) classeCor = "has-despesa";
 
+                const isToday = dia === hoje.getDate() && mes === hoje.getMonth() && ano === hoje.getFullYear();
+
                 grid.innerHTML += `
-                    <div class="calendar-day ${classeCor} ${dia === hoje.getDate() ? 'today' : ''}" onclick="focarData('${dataString}')">
+                    <div class="calendar-day ${classeCor} ${isToday ? 'today' : ''}" onclick="focarData('${dataString}')">
                         ${dia}
                     </div>`;
             }
@@ -220,35 +248,83 @@
         function importarExcel(event) {
             const file = event.target.files[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const linhas = e.target.result.split(/\r?\n/).slice(1);
-                    let novos = [];
-                    linhas.forEach((linha, idx) => {
-                        const colunas = linha.split(';');
-                        if (colunas.length >= 5) {
-                            novos.push({ id: Date.now() * 1000 + idx, desc: colunas[0].replace(/"/g, ''), valor: parseFloat(colunas[1].replace(',', '.')), tipo: colunas[2].trim(), dataVenc: colunas[3].trim(), status: colunas[4].trim() });
+            event.target.value = '';
+
+            const ext = file.name.split('.').pop().toLowerCase();
+
+            function processarLinhas(rows) {
+                let novos = [];
+                rows.forEach((row, idx) => {
+                    if (!row || row.length < 5) return;
+                    const desc = String(row[0] || '').replace(/"/g, '').trim();
+                    if (!desc) return;
+                    const valorStr = String(row[1] || '').replace(/"/g, '').replace(',', '.');
+                    const valor = parseFloat(valorStr);
+                    if (isNaN(valor)) return;
+                    const tipo = String(row[2] || '').replace(/"/g, '').trim().toLowerCase();
+                    const dataVenc = String(row[3] || '').replace(/"/g, '').trim();
+                    const status = String(row[4] || '').replace(/"/g, '').trim().toLowerCase();
+                    if (!tipo || !dataVenc || !status) return;
+                    novos.push({ id: Date.now() * 1000 + idx, desc, valor, tipo, dataVenc, status });
+                });
+                return novos;
+            }
+
+            if (ext === 'xlsx' || ext === 'xls') {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const data = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' });
+                        const novos = processarLinhas(data.slice(1));
+                        if (novos.length > 0) {
+                            transacoes = [...transacoes, ...novos];
+                            atualizarApp();
+                            alert(`✅ ${novos.length} registro(s) importado(s) com sucesso!`);
+                        } else {
+                            alert("Nenhum dado válido encontrado.\n\nVerifique se o arquivo tem as colunas: Descrição | Valor | Tipo | Vencimento | Status");
                         }
-                    });
-                    if (novos.length > 0) {
-                        transacoes = [...transacoes, ...novos];
-                        atualizarApp();
-                        alert("Importado com sucesso!");
-                    }
-                } catch (err) { alert("Erro ao importar."); }
-            };
-            reader.readAsText(file);
+                    } catch (err) { alert("Erro ao importar o arquivo Excel: " + err.message); }
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const texto = e.target.result;
+                        const linhas = texto.split(/\r?\n/).slice(1);
+                        const rows = linhas.filter(l => l.trim()).map(linha => {
+                            const sep = linha.includes(';') ? ';' : ',';
+                            return linha.split(sep);
+                        });
+                        const novos = processarLinhas(rows);
+                        if (novos.length > 0) {
+                            transacoes = [...transacoes, ...novos];
+                            atualizarApp();
+                            alert(`✅ ${novos.length} registro(s) importado(s) com sucesso!`);
+                        } else {
+                            alert("Nenhum dado válido encontrado.\n\nVerifique se o arquivo CSV tem as colunas: Descrição;Valor;Tipo;Vencimento;Status");
+                        }
+                    } catch (err) { alert("Erro ao importar o arquivo CSV: " + err.message); }
+                };
+                reader.readAsText(file, 'UTF-8');
+            }
         }
 
         function exportarExcel() {
-            if (transacoes.length === 0) return alert("Sem dados.");
-            let csv = "\uFEFFDescricao;Valor;Tipo;Vencimento;Status\n";
-            transacoes.forEach(t => csv += `${t.desc};${t.valor.toFixed(2).replace('.', ',')};${t.tipo};${t.dataVenc};${t.status}\n`);
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-            link.download = "financeiro.csv";
-            link.click();
+            if (transacoes.length === 0) return alert("Sem dados para exportar.");
+            const dados = transacoes.map(t => ({
+                'Descricao': t.desc,
+                'Valor': t.valor,
+                'Tipo': t.tipo,
+                'Vencimento': t.dataVenc,
+                'Status': t.status
+            }));
+            const ws = XLSX.utils.json_to_sheet(dados);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Financeiro');
+            XLSX.writeFile(wb, 'financeiro.xlsx');
         }
 
         function popularFiltroMes() {
@@ -322,19 +398,16 @@
             const anoAtual = hoje.getFullYear();
             const mesAtual = hoje.getMonth(); // 0-indexed
 
-            // Mês anterior
+            // Mês anterior (origem)
             const dataAnterior = new Date(anoAtual, mesAtual - 1, 1);
             const anoAnterior = dataAnterior.getFullYear();
-            const mesAnteriorNum = dataAnterior.getMonth(); // 0-indexed
+            const mesAnteriorNum = dataAnterior.getMonth();
             const mesAnteriorStr = String(mesAnteriorNum + 1).padStart(2, '0');
             const prefixoAnterior = `${anoAnterior}-${mesAnteriorStr}`;
 
-            // Próximo mês (destino da clonagem)
-            const dataProximo = new Date(anoAtual, mesAtual + 1, 1);
-            const anoProximo = dataProximo.getFullYear();
-            const mesProximoNum = dataProximo.getMonth(); // 0-indexed
-            const mesProximoStr = String(mesProximoNum + 1).padStart(2, '0');
-            const totalDiasProximo = new Date(anoProximo, mesProximoNum + 1, 0).getDate();
+            // Mês atual (destino)
+            const mesAtualStr = String(mesAtual + 1).padStart(2, '0');
+            const totalDiasAtual = new Date(anoAtual, mesAtual + 1, 0).getDate();
 
             const origem = transacoes.filter(t => t.dataVenc.startsWith(prefixoAnterior));
 
@@ -344,38 +417,43 @@
             }
 
             const labelAnterior = dataAnterior.toLocaleString('pt-br', { month: 'long', year: 'numeric' });
-            const labelProximo = dataProximo.toLocaleString('pt-br', { month: 'long', year: 'numeric' });
+            const labelAtual = new Date(anoAtual, mesAtual, 1).toLocaleString('pt-br', { month: 'long', year: 'numeric' });
 
-            if (!confirm(`Deseja clonar ${origem.length} conta(s) de ${labelAnterior} para ${labelProximo}?\n\nOs registros clonados terão status "Pendente".`)) return;
+            if (!confirm(`Deseja clonar ${origem.length} conta(s) de ${labelAnterior} para ${labelAtual}?\n\nOs registros clonados terão status "Pendente".`)) return;
 
             const clones = origem.map((t, idx) => {
                 const diaOrigem = parseInt(t.dataVenc.split('-')[2], 10);
-                // Garante que o dia não ultrapasse o total de dias do mês destino
-                const diaDestino = Math.min(diaOrigem, totalDiasProximo);
+                const diaDestino = Math.min(diaOrigem, totalDiasAtual);
                 return {
                     id: Date.now() * 1000 + idx,
                     desc: t.desc,
                     valor: t.valor,
                     tipo: t.tipo,
-                    dataVenc: `${anoProximo}-${mesProximoStr}-${String(diaDestino).padStart(2, '0')}`,
+                    dataVenc: `${anoAtual}-${mesAtualStr}-${String(diaDestino).padStart(2, '0')}`,
                     status: 'pendente'
                 };
             });
 
             transacoes = [...transacoes, ...clones];
             atualizarApp();
-            alert(`✅ ${clones.length} conta(s) clonada(s) para ${labelProximo} com sucesso!`);
+            alert(`✅ ${clones.length} conta(s) clonada(s) para ${labelAtual} com sucesso!`);
         }
 
-        function atualizarApp() {
-            localStorage.setItem('finance_app_v4', JSON.stringify(transacoes));
-            const { totalReceitas, totalDespesas } = transacoes.reduce((acc, t) => {
+        function atualizarResumo() {
+            const prefixo = `${viewAno}-${String(viewMes + 1).padStart(2, '0')}`;
+            const dados = transacoes.filter(t => t.dataVenc.startsWith(prefixo));
+            const { totalReceitas, totalDespesas } = dados.reduce((acc, t) => {
                 if (t.tipo === 'receita') acc.totalReceitas += t.valor;
                 else acc.totalDespesas += t.valor;
                 return acc;
             }, { totalReceitas: 0, totalDespesas: 0 });
             document.getElementById('total-receitas').innerText = `R$ ${totalReceitas.toFixed(2).replace('.', ',')}`;
             document.getElementById('total-despesas').innerText = `R$ ${totalDespesas.toFixed(2).replace('.', ',')}`;
+        }
+
+        function atualizarApp() {
+            localStorage.setItem('finance_app_v4', JSON.stringify(transacoes));
+            atualizarResumo();
             gerarCalendario();
             popularFiltroMes();
             renderTabela();
